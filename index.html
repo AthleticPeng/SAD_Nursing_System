@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>所在院區</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111111;
+        --muted: #5f6368;
+        --line: #d9dee5;
+        --panel: #ffffff;
+        --page: #f3f7fb;
+        --accent: #0f766e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(15, 118, 110, 0.12), rgba(243, 247, 251, 0) 360px),
+          var(--page);
+      }
+
+      main {
+        width: min(920px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 72px 0;
+      }
+
+      .home {
+        display: grid;
+        gap: 28px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1.12;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.7;
+      }
+
+      .campus-field {
+        display: grid;
+        gap: 10px;
+        max-width: 520px;
+      }
+
+      .workspace {
+        display: grid;
+        gap: 10px;
+        max-width: 720px;
+      }
+
+      label {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      select {
+        width: 100%;
+        min-height: 48px;
+        padding: 0 44px 0 16px;
+        border: 1px solid #000000;
+        border-radius: 0;
+        color: #ffffff;
+        background-color: #000000;
+        font: inherit;
+        font-weight: 700;
+        letter-spacing: 0;
+        appearance: none;
+        background-image:
+          linear-gradient(45deg, transparent 50%, #ffffff 50%),
+          linear-gradient(135deg, #ffffff 50%, transparent 50%);
+        background-position:
+          calc(100% - 24px) 20px,
+          calc(100% - 16px) 20px;
+        background-size: 8px 8px;
+        background-repeat: no-repeat;
+      }
+
+      select:focus {
+        outline: 3px solid rgba(15, 118, 110, 0.32);
+        outline-offset: 3px;
+      }
+
+      option {
+        color: #ffffff;
+        background: #000000;
+      }
+
+      .status {
+        width: fit-content;
+        margin: 8px 0 0;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .status strong {
+        color: var(--accent);
+      }
+
+      .function-panel {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        overflow-x: auto;
+        padding: 4px 0 10px;
+      }
+
+      .function-button {
+        flex: 0 0 auto;
+        min-height: 44px;
+        padding: 0 16px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        color: #ffffff;
+        background: var(--accent);
+        font: inherit;
+        font-weight: 700;
+        letter-spacing: 0;
+        cursor: pointer;
+      }
+
+      .function-button:hover,
+      .function-button:focus {
+        background: #115e59;
+        border-color: #115e59;
+      }
+
+      .function-button:focus {
+        outline: 3px solid rgba(15, 118, 110, 0.32);
+        outline-offset: 3px;
+      }
+
+      .patient-section {
+        display: none;
+        gap: 18px;
+      }
+
+      .patient-section.is-visible {
+        display: grid;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      table {
+        width: 100%;
+        min-width: 920px;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th {
+        color: #ffffff;
+        background: #1f2937;
+        font-weight: 700;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      tbody tr:nth-child(even) {
+        background: #f8fafc;
+      }
+
+      td {
+        color: #202124;
+      }
+
+      @media (max-width: 560px) {
+        main {
+          width: min(100% - 24px, 920px);
+          padding: 48px 0;
+        }
+
+        select {
+          min-height: 52px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="home" aria-labelledby="campus-title">
+        <div>
+          <h1 id="campus-title">照護系統</h1>
+          <p class="hint">請選擇目前所在院區。</p>
+        </div>
+
+        <div class="campus-field">
+          <label for="campus">院區</label>
+          <select id="campus" name="campus">
+            <option value="台大/兒醫">台大/兒醫</option>
+            <option value="淡水">淡水</option>
+            <option value="臺東">臺東</option>
+            <option value="新竹">新竹</option>
+            <option value="竹兒">竹兒</option>
+            <option value="和聯">和聯</option>
+            <option value="長照">長照</option>
+            <option value="西園">西園</option>
+            <option value="清大">清大</option>
+          </select>
+        </div>
+      </section>
+      <section class="home" aria-labelledby="workspace-title">
+        <div class="workspace">
+          <label for="workspace">作業區</label>
+          <select id="workspace" name="workspace">
+            <option value="病例合併_開放系統\醫事作業\病歷管理系統作業">病例合併_開放系統\醫事作業\病歷管理系統作業</option>
+            <option value="門診病例修改_開放系統\醫令作業\資料補登">門診病例修改_開放系統\醫令作業\資料補登</option>
+            <option value="住院醫令">住院醫令</option>
+            <option value="急住醫令-護理_開放系統\最近使用的作業">急住醫令-護理_開放系統\最近使用的作業</option>
+          </select>
+        </div>
+      </section>
+      <section class="patient-section" id="nursing-functions" aria-label="急住醫令護理功能">
+        <div class="function-panel">
+          <button class="function-button" type="button">醫囑與報告</button>
+          <button class="function-button" type="button">Check Order</button>
+          <button class="function-button" type="button">TPRsheet</button>
+          <button class="function-button" type="button">用藥資訊</button>
+        <button class="function-button" type="button">I/O sheet</button>
+        <button class="function-button" type="button">表單列印</button>
+        <button class="function-button" type="button">Kardex</button>
+        <button class="function-button" type="button">銳評</button>
+        <button class="function-button" type="button">排班建議</button>
+      </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>床號</th>
+                <th>主治醫師一師</th>
+                <th>病人姓名</th>
+                <th>性別</th>
+                <th>年齡</th>
+                <th>出生日期</th>
+                <th>住院日期</th>
+                <th>診斷</th>
+                <th>負責護理師</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>MI-01</td>
+                <td>彭OO</td>
+                <td>林OO</td>
+                <td>男</td>
+                <td>88</td>
+                <td>1937/05/25</td>
+                <td>2026/04/16</td>
+                <td>Septic shock with multi-organ failure</td>
+                <td>A</td>
+              </tr>
+              <tr>
+                <td>MI-02</td>
+                <td>彭OO</td>
+                <td>王OO</td>
+                <td>男</td>
+                <td>84</td>
+                <td>1941/05/02</td>
+                <td>2026/04/16</td>
+                <td>Acute myocardial infarction (AMI) status post percutaneous coronary intervention (PCI), stable</td>
+                <td>A</td>
+              </tr>
+              <tr>
+                <td>MI-03</td>
+                <td>彭OO</td>
+                <td>李OO</td>
+                <td>男</td>
+                <td>87</td>
+                <td>1938/11/20</td>
+                <td>2026/03/17</td>
+                <td></td>
+                <td>B</td>
+              </tr>
+              <tr>
+                <td>MI-04</td>
+                <td>彭OO</td>
+                <td>黃OO</td>
+                <td>女</td>
+                <td>74</td>
+                <td>1951/10/01</td>
+                <td>2026/03/26</td>
+                <td></td>
+                <td>B</td>
+              </tr>
+              <tr>
+                <td>MI-05</td>
+                <td>彭OO</td>
+                <td>江OO</td>
+                <td>男</td>
+                <td>76</td>
+                <td>1949/05/25</td>
+                <td>2026/04/16</td>
+                <td></td>
+                <td>C</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const workspaceSelect = document.querySelector("#workspace");
+      const nursingFunctions = document.querySelector("#nursing-functions");
+      const nursingWorkspace = "急住醫令-護理_開放系統\\最近使用的作業";
+
+      function updateFunctionPanel() {
+        nursingFunctions.classList.toggle("is-visible", workspaceSelect.value === nursingWorkspace);
+      }
+
+      workspaceSelect.addEventListener("change", updateFunctionPanel);
+      updateFunctionPanel();
+    </script>
+  </body>
+</html>
