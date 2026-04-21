@@ -33,6 +33,7 @@ const functionButtons = [
   "銳評",
   "排班建議"
 ];
+const MAX_BURDEN_SCORE = 225;
 
 function App() {
   const [campus, setCampus] = useState(campusOptions[0]);
@@ -136,6 +137,10 @@ function App() {
     }
   }
 
+  function openScheduling() {
+    setView("scheduling");
+  }
+
   async function saveAssessment(patientId, scores) {
     const response = await fetch(`${API_BASE_URL}/api/patients/${patientId}/assessment`, {
       method: "PATCH",
@@ -157,9 +162,40 @@ function App() {
     }));
     setPatients((currentPatients) =>
       currentPatients.map((patient) =>
-        patient.id === patientId ? { ...patient, burdenScore: updatedAssessment.burdenScore } : patient
+        patient.id === patientId
+          ? {
+              ...patient,
+              assessmentScores: updatedAssessment.assessmentScores,
+              burdenScore: updatedAssessment.burdenScore
+            }
+          : patient
       )
     );
+  }
+
+  async function saveNurseAssignment(patientId, responsibleNurse) {
+    const response = await fetch(`${API_BASE_URL}/api/patients/${patientId}/nurse`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ responsibleNurse })
+    });
+
+    if (!response.ok) {
+      throw new Error("排班調整儲存失敗");
+    }
+
+    const updatedPatient = await response.json();
+    setPatients((currentPatients) =>
+      currentPatients.map((patient) =>
+        patient.id === patientId ? { ...patient, responsibleNurse: updatedPatient.responsibleNurse } : patient
+      )
+    );
+
+    if (selectedPatientId === patientId) {
+      setSelectedNurse(updatedPatient.responsibleNurse);
+    }
   }
 
   if (view === "assessment" && detailPatient) {
@@ -169,6 +205,18 @@ function App() {
         assessmentItems={assessmentItems}
         onBack={() => setView("home")}
         onSave={saveAssessment}
+      />
+    );
+  }
+
+  if (view === "scheduling") {
+    return (
+      <SchedulingPage
+        patients={patients}
+        selectedPatientId={selectedPatientId}
+        nurseOptions={nurseOptions}
+        onBack={() => setView("home")}
+        onSave={saveNurseAssignment}
       />
     );
   }
@@ -226,10 +274,12 @@ function App() {
             selectedPatient={selectedPatient}
             selectedNurse={selectedNurse}
             onAssessmentClick={openAssessment}
+            onSchedulingClick={openScheduling}
           />
 
           <PatientTable
             patients={patients}
+            assessmentItems={assessmentItems}
             selectedNurse={selectedNurse}
             selectedPatientId={selectedPatientId}
             onSelectPatient={setSelectedPatientId}
@@ -242,20 +292,21 @@ function App() {
   );
 }
 
-function FunctionButtons({ selectedPatient, selectedNurse, onAssessmentClick }) {
+function FunctionButtons({ selectedPatient, selectedNurse, onAssessmentClick, onSchedulingClick }) {
   const canOpenAssessment = selectedPatient && selectedPatient.responsibleNurse === selectedNurse;
 
   return (
     <div className="function-panel">
       {functionButtons.map((label) => {
         const isAssessmentButton = label === "銳評";
+        const isSchedulingButton = label === "排班建議";
 
         return (
           <button
             className="function-button"
             type="button"
             key={label}
-            onClick={isAssessmentButton ? onAssessmentClick : undefined}
+            onClick={isAssessmentButton ? onAssessmentClick : isSchedulingButton ? onSchedulingClick : undefined}
             disabled={isAssessmentButton && !canOpenAssessment}
           >
             {label}
@@ -266,7 +317,17 @@ function FunctionButtons({ selectedPatient, selectedNurse, onAssessmentClick }) 
   );
 }
 
-function PatientTable({ patients, selectedNurse, selectedPatientId, onSelectPatient, status, errorMessage }) {
+function PatientTable({
+  patients,
+  assessmentItems,
+  selectedNurse,
+  selectedPatientId,
+  onSelectPatient,
+  status,
+  errorMessage
+}) {
+  const [tooltip, setTooltip] = useState(null);
+
   if (status === "loading" && patients.length === 0) {
     return <p className="message">資料載入中...</p>;
   }
@@ -274,6 +335,8 @@ function PatientTable({ patients, selectedNurse, selectedPatientId, onSelectPati
   if (status === "error") {
     return <p className="message error">{errorMessage}</p>;
   }
+
+  const maxBurdenScore = MAX_BURDEN_SCORE;
 
   return (
     <div className="table-wrap">
@@ -296,11 +359,32 @@ function PatientTable({ patients, selectedNurse, selectedPatientId, onSelectPati
           {patients.map((patient) => {
             const isOwned = patient.responsibleNurse === selectedNurse;
             const isSelected = patient.id === selectedPatientId;
+            const scoredItems = getScoredAssessmentItems(patient.assessmentScores ?? {}, assessmentItems);
 
             return (
               <tr
                 className={`${isOwned ? "clickable-row" : "locked-row"} ${isSelected ? "selected-row" : ""}`}
                 key={patient.id}
+                onMouseEnter={(event) => {
+                  setTooltip({
+                    patient,
+                    scoredItems,
+                    x: event.clientX,
+                    y: event.clientY
+                  });
+                }}
+                onMouseMove={(event) => {
+                  setTooltip((currentTooltip) =>
+                    currentTooltip
+                      ? {
+                          ...currentTooltip,
+                          x: event.clientX,
+                          y: event.clientY
+                        }
+                      : null
+                  );
+                }}
+                onMouseLeave={() => setTooltip(null)}
                 onClick={() => {
                   if (isOwned) {
                     onSelectPatient(patient.id);
@@ -316,13 +400,168 @@ function PatientTable({ patients, selectedNurse, selectedPatientId, onSelectPati
                 <td>{patient.admissionDate}</td>
                 <td className="diagnosis-cell">{patient.diagnosis}</td>
                 <td>{patient.responsibleNurse}</td>
-                <td>{formatScore(patient.burdenScore)}</td>
+                <td>{formatNormalizedScore(patient.burdenScore, maxBurdenScore)}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      {tooltip && (
+        <div className="patient-tooltip" style={getTooltipStyle(tooltip.x, tooltip.y)}>
+          <strong>
+            {tooltip.patient.bedNo} / {tooltip.patient.patientName}
+          </strong>
+          {tooltip.scoredItems.length > 0 ? (
+            <ul>
+              {tooltip.scoredItems.map((item) => (
+                <li key={item.key}>
+                  <span>{item.label}</span>
+                  <b>{item.valueLabel}</b>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>目前沒有被打分數的銳評項目。</p>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function SchedulingPage({ patients, selectedPatientId, nurseOptions, onBack, onSave }) {
+  const [assignments, setAssignments] = useState(
+    Object.fromEntries(patients.map((patient) => [patient.id, patient.responsibleNurse]))
+  );
+  const [savingPatientId, setSavingPatientId] = useState(null);
+  const [message, setMessage] = useState("");
+  const selectedPatient = patients.find((patient) => patient.id === selectedPatientId);
+  const maxBurdenScore = MAX_BURDEN_SCORE;
+  const sortedPatients = [...patients].sort((first, second) => {
+    if (first.id === selectedPatientId) {
+      return -1;
+    }
+
+    if (second.id === selectedPatientId) {
+      return 1;
+    }
+
+    return second.burdenScore - first.burdenScore;
+  });
+
+  async function handleSave(patientId) {
+    try {
+      setSavingPatientId(patientId);
+      setMessage("");
+      await onSave(patientId, assignments[patientId]);
+      setMessage("排班調整已儲存。");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSavingPatientId(null);
+    }
+  }
+
+  return (
+    <main>
+      <section className="detail-header">
+        <button className="secondary-button" type="button" onClick={onBack}>
+          返回首頁
+        </button>
+        <div>
+          <h1>排班建議</h1>
+          <p className="hint">
+            {selectedPatient
+              ? `目前選取 ${selectedPatient.bedNo} / ${selectedPatient.patientName}，可手動調整負責護理師。`
+              : "可依麻煩度與護理師負擔，手動調整每位病人的負責護理師。"}
+          </p>
+        </div>
+      </section>
+
+      <section className="schedule-summary" aria-label="排班摘要">
+        {nurseOptions.map((nurse) => {
+          const nursePatients = patients.filter((patient) => assignments[patient.id] === nurse);
+          const averageBurdenScore =
+            nursePatients.length > 0
+              ? nursePatients.reduce((total, patient) => total + normalizeScore(patient.burdenScore, maxBurdenScore), 0) /
+                nursePatients.length
+              : 0;
+
+          return (
+            <div className="dashboard-card" key={nurse}>
+              <span>護理師 {nurse}</span>
+              <strong>{nursePatients.length} 位病人</strong>
+              <p>平均麻煩度 {formatScore(averageBurdenScore)}</p>
+            </div>
+          );
+        })}
+      </section>
+
+      <div className="table-wrap">
+        <table className="schedule-table">
+          <thead>
+            <tr>
+              <th>床號</th>
+              <th>病人姓名</th>
+              <th>性別</th>
+              <th>主治醫師</th>
+              <th>診斷</th>
+              <th>年齡</th>
+              <th>護理師</th>
+              <th>麻煩度分數</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedPatients.map((patient) => {
+              const hasChanged = assignments[patient.id] !== patient.responsibleNurse;
+
+              return (
+                <tr className={patient.id === selectedPatientId ? "selected-row" : ""} key={patient.id}>
+                  <td>{patient.bedNo}</td>
+                  <td>{patient.patientName}</td>
+                  <td>{patient.gender}</td>
+                  <td>{patient.attendingDoctorPrimary}</td>
+                  <td className="diagnosis-cell">{patient.diagnosis}</td>
+                  <td>{patient.age}</td>
+                  <td>
+                    <select
+                      className="inline-select"
+                      value={assignments[patient.id]}
+                      onChange={(event) =>
+                        setAssignments((currentAssignments) => ({
+                          ...currentAssignments,
+                          [patient.id]: event.target.value
+                        }))
+                      }
+                    >
+                      {nurseOptions.map((nurse) => (
+                        <option key={nurse} value={nurse}>
+                          {nurse}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>{formatNormalizedScore(patient.burdenScore, maxBurdenScore)}</td>
+                  <td>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={!hasChanged || savingPatientId === patient.id}
+                      onClick={() => handleSave(patient.id)}
+                    >
+                      {savingPatientId === patient.id ? "儲存中" : "儲存"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {message && <p className="message schedule-message">{message}</p>}
+    </main>
   );
 }
 
@@ -331,6 +570,10 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
   const [saveStatus, setSaveStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const burdenScore = calculateWeightedScore(scores, assessmentItems);
+  const maxBurdenScore = getMaxBurdenScore(assessmentItems) || MAX_BURDEN_SCORE;
+  const normalizedBurdenScore = normalizeScore(burdenScore, maxBurdenScore);
+  const riskLevel = getRiskLevel(burdenScore, maxBurdenScore);
+  const topAssessmentItems = getTopAssessmentItems(scores, assessmentItems);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -361,7 +604,74 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
         </div>
       </section>
 
-      <section className="detail-grid" aria-label="病人詳細資訊">
+      <section className="assessment-dashboard" aria-label="銳評儀表板">
+        <div className="dashboard-card score-card">
+          <span>即時麻煩度</span>
+          <strong>{formatScore(normalizedBurdenScore)}</strong>
+          <p>{riskLevel.label}</p>
+          <div className="score-meter" aria-hidden="true">
+            <span style={{ width: `${normalizedBurdenScore}%` }} />
+          </div>
+        </div>
+
+        <div className="dashboard-card">
+          <span>病人資訊</span>
+          <strong>
+            {patient.bedNo} / {patient.patientName}
+          </strong>
+          <p>
+            {patient.gender}，{patient.age} 歲，{patient.attendingDoctorPrimary} 醫師
+          </p>
+        </div>
+
+        <div className="dashboard-card">
+          <span>照護資訊</span>
+          <strong>護理師 {patient.responsibleNurse}</strong>
+          <p>住院日期 {patient.admissionDate}</p>
+        </div>
+
+        <div className="dashboard-card diagnosis-card">
+          <span>診斷</span>
+          <strong>{patient.diagnosis || "-"}</strong>
+        </div>
+      </section>
+
+      <section className="dashboard-section" aria-label="同步評分摘要">
+        <div className="summary-panel">
+          <h2>主要負擔來源</h2>
+          {topAssessmentItems.length === 0 ? (
+            <p className="hint">目前尚未有明顯負擔項目。</p>
+          ) : (
+            <div className="burden-list">
+              {topAssessmentItems.map((item) => (
+                <div className="burden-item" key={item.key}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.valueLabel}</span>
+                  </div>
+                  <b>{formatScore(item.weightedScore)}</b>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="summary-panel">
+          <h2>當班資訊</h2>
+          <div className="quick-list">
+            <div>
+              <span>藥物</span>
+              <strong>{formatDetailValue(patient.detail?.["當班使用藥物清單"])}</strong>
+            </div>
+            <div>
+              <span>檢查</span>
+              <strong>{formatDetailValue(patient.detail?.["當班開立檢查清單"])}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="detail-grid compact-details" aria-label="完整詳細資訊">
         {Object.entries(patient.detail ?? {}).map(([key, value]) => (
           <div className="detail-item" key={key}>
             <span>{key.trim()}</span>
@@ -373,32 +683,29 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
       <form className="assessment-form" onSubmit={handleSubmit}>
         <div className="assessment-title">
           <h2>麻煩度量表</h2>
-          <p>每項請填 0-5 分，系統會依原始配分加權計算總分。</p>
-          <strong>目前加權總分：{formatScore(burdenScore)}</strong>
+          <p>依題目型態勾選或選擇，系統會依原始配分計算加權總分。</p>
+          <strong>目前麻煩度：{formatScore(normalizedBurdenScore)}</strong>
         </div>
 
         <div className="assessment-list">
           {assessmentItems.map((item) => (
-            <label className="score-row" key={item.key}>
-              <span>
+            <div className="score-row" key={item.key}>
+              <div>
                 {item.label}
-                <small>權重 {item.weight}</small>
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="5"
-                step="1"
-                value={scores[item.key] ?? 0}
-                onChange={(event) =>
+                <small>{getItemHint(item)}</small>
+              </div>
+              <AssessmentControl
+                item={item}
+                value={scores[item.key]}
+                onChange={(value) =>
                   setScores((currentScores) => ({
                     ...currentScores,
-                    [item.key]: Number(event.target.value)
+                    [item.key]: value
                   }))
                 }
               />
-              <output>{scores[item.key] ?? 0}</output>
-            </label>
+              <output>{formatScore(calculateItemScore(item, scores[item.key]))}</output>
+            </div>
           ))}
         </div>
 
@@ -414,14 +721,199 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
 }
 
 function calculateWeightedScore(scores, assessmentItems) {
+  return assessmentItems.reduce((total, item) => total + calculateItemScore(item, scores[item.key]), 0);
+}
+
+function calculateItemScore(item, value) {
+  if (item.type === "boolean") {
+    return value ? item.weight : 0;
+  }
+
+  if (item.type === "select") {
+    return Math.min(item.weight, Number(value ?? 0) * item.pointsPerUnit);
+  }
+
+  if (item.type === "multi") {
+    const selectedValues = Array.isArray(value) ? value : [];
+    return item.options
+      .filter((option) => selectedValues.includes(option.value))
+      .reduce((total, option) => total + option.weight, 0);
+  }
+
+  return 0;
+}
+
+function getMaxBurdenScore(assessmentItems) {
   return assessmentItems.reduce((total, item) => {
-    const score = Number(scores[item.key] ?? 0);
-    return total + (Math.max(0, Math.min(5, score)) / 5) * item.weight;
+    if (item.type === "multi") {
+      return total + item.options.reduce((sum, option) => sum + option.weight, 0);
+    }
+
+    return total + item.weight;
   }, 0);
+}
+
+function getTopAssessmentItems(scores, assessmentItems) {
+  return assessmentItems
+    .map((item) => {
+      return {
+        ...item,
+        valueLabel: formatAssessmentValue(item, scores[item.key]),
+        weightedScore: calculateItemScore(item, scores[item.key])
+      };
+    })
+    .filter((item) => item.weightedScore > 0)
+    .sort((first, second) => second.weightedScore - first.weightedScore)
+    .slice(0, 3);
+}
+
+function getRiskLevel(score, maxScore) {
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+
+  if (ratio >= 0.6) {
+    return { label: "高負擔" };
+  }
+
+  if (ratio >= 0.3) {
+    return { label: "中負擔" };
+  }
+
+  return { label: "低負擔" };
+}
+
+function AssessmentControl({ item, value, onChange }) {
+  if (item.type === "boolean") {
+    return (
+      <div className="segmented-control">
+        <button className={value ? "is-active" : ""} type="button" onClick={() => onChange(true)}>
+          是
+        </button>
+        <button className={!value ? "is-active" : ""} type="button" onClick={() => onChange(false)}>
+          否
+        </button>
+      </div>
+    );
+  }
+
+  if (item.type === "select") {
+    return (
+      <select className="inline-select" value={value ?? 0} onChange={(event) => onChange(Number(event.target.value))}>
+        {item.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (item.type === "multi") {
+    const selectedValues = Array.isArray(value) ? value : [];
+
+    return (
+      <div className="checkbox-grid">
+        {item.options.map((option) => (
+          <label key={option.value}>
+            <input
+              type="checkbox"
+              checked={selectedValues.includes(option.value)}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  onChange([...selectedValues, option.value]);
+                  return;
+                }
+
+                onChange(selectedValues.filter((selectedValue) => selectedValue !== option.value));
+              }}
+            />
+            <span>
+              {option.label}
+              <small>+{option.weight}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function getItemHint(item) {
+  if (item.type === "boolean") {
+    return `是 = +${item.weight} 分`;
+  }
+
+  if (item.type === "select") {
+    return `每項 +${item.pointsPerUnit} 分，最多 +${item.weight} 分`;
+  }
+
+  if (item.type === "multi") {
+    return "可複選，依選項加總";
+  }
+
+  return "";
+}
+
+function formatAssessmentValue(item, value) {
+  if (item.type === "boolean") {
+    return value ? `是，+${item.weight} 分` : "否";
+  }
+
+  if (item.type === "select") {
+    const option = item.options.find((currentOption) => Number(currentOption.value) === Number(value ?? 0));
+    return option ? option.label : "0 項";
+  }
+
+  if (item.type === "multi") {
+    const selectedValues = Array.isArray(value) ? value : [];
+    const labels = item.options
+      .filter((option) => selectedValues.includes(option.value))
+      .map((option) => option.label);
+
+    return labels.length > 0 ? labels.join("、") : "未選擇";
+  }
+
+  return "";
+}
+
+function getScoredAssessmentItems(scores, assessmentItems) {
+  return assessmentItems
+    .map((item) => ({
+      ...item,
+      valueLabel: formatAssessmentValue(item, scores[item.key]),
+      weightedScore: calculateItemScore(item, scores[item.key])
+    }))
+    .filter((item) => item.weightedScore > 0);
+}
+
+function getTooltipStyle(x, y) {
+  const tooltipWidth = 360;
+  const tooltipHeight = 420;
+  const gap = 16;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  return {
+    left: Math.max(gap, Math.min(x + gap, viewportWidth - tooltipWidth - gap)),
+    top: Math.max(gap, Math.min(y + gap, viewportHeight - tooltipHeight - gap))
+  };
 }
 
 function formatScore(score) {
   return Number(score ?? 0).toFixed(1);
+}
+
+function normalizeScore(score, maxScore) {
+  if (!maxScore || maxScore <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, (Number(score ?? 0) / maxScore) * 100));
+}
+
+function formatNormalizedScore(score, maxScore) {
+  return formatScore(normalizeScore(score, maxScore));
 }
 
 function formatDetailValue(value) {
