@@ -34,6 +34,17 @@ const functionButtons = [
   "排班建議"
 ];
 const MAX_BURDEN_SCORE = 225;
+const duplicatedDetailKeys = new Set([
+  "床號",
+  "主治醫師",
+  "病人姓名",
+  "性別",
+  "年齡",
+  "出生日期",
+  "住院日期",
+  "診斷",
+  "負責護理師"
+]);
 
 function App() {
   const [campus, setCampus] = useState(campusOptions[0]);
@@ -695,6 +706,13 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
   const normalizedBurdenScore = normalizeScore(burdenScore, maxBurdenScore);
   const riskLevel = getRiskLevel(burdenScore, maxBurdenScore);
   const topAssessmentItems = getTopAssessmentItems(scores, assessmentItems);
+  const hiddenDetailKeys = new Set([
+    ...duplicatedDetailKeys,
+    ...assessmentItems.map((item) => item.sourceKey?.trim()).filter(Boolean)
+  ]);
+  const filteredDetailEntries = Object.entries(patient.detail ?? {}).filter(([key]) => {
+    return !hiddenDetailKeys.has(key.trim());
+  });
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -792,7 +810,7 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
       </section>
 
       <section className="detail-grid compact-details" aria-label="完整詳細資訊">
-        {Object.entries(patient.detail ?? {}).map(([key, value]) => (
+        {filteredDetailEntries.map(([key, value]) => (
           <div className="detail-item" key={key}>
             <span>{key.trim()}</span>
             <strong>{formatDetailValue(value)}</strong>
