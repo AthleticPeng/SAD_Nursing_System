@@ -44,10 +44,13 @@ function App() {
   const [assessmentItems, setAssessmentItems] = useState([]);
   const [detailPatient, setDetailPatient] = useState(null);
   const [view, setView] = useState("home");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [healthStatus, setHealthStatus] = useState("idle");
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const showNursingDashboard = workspace === nursingWorkspace;
+  const isNursingWorkspace = workspace === nursingWorkspace;
+  const showNursingDashboard = isLoggedIn && isNursingWorkspace;
   const selectedPatient = patients.find((patient) => patient.id === selectedPatientId);
   const nurseOptions = useMemo(
     () => [...new Set(patients.map((patient) => patient.responsibleNurse))].filter(Boolean).sort(),
@@ -70,7 +73,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!showNursingDashboard) {
+    if (!isNursingWorkspace) {
       setSelectedPatientId(null);
       setView("home");
       return;
@@ -105,7 +108,41 @@ function App() {
     return () => {
       controller.abort();
     };
-  }, [showNursingDashboard]);
+  }, [isNursingWorkspace]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setHealthStatus("idle");
+      return;
+    }
+
+    let isMounted = true;
+    setHealthStatus("checking");
+
+    fetch(`${API_BASE_URL}/api/health`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("health check failed");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (!isMounted) {
+          return;
+        }
+        setHealthStatus(data.status === "ok" ? "ok" : "error");
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        setHealthStatus("error");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (!selectedNurse && nurseOptions.length > 0) {
@@ -139,6 +176,22 @@ function App() {
 
   function openScheduling() {
     setView("scheduling");
+  }
+
+  function enterWorkspace() {
+    if (!selectedNurse) {
+      return;
+    }
+
+    setIsLoggedIn(true);
+    setView("home");
+  }
+
+  function signOut() {
+    setIsLoggedIn(false);
+    setView("home");
+    setSelectedPatientId(null);
+    setDetailPatient(null);
   }
 
   async function saveAssessment(patientId, scores) {
@@ -223,60 +276,90 @@ function App() {
 
   return (
     <main>
-      <section className="home" aria-labelledby="campus-title">
-        <div>
-          <h1 id="campus-title">照護系統</h1>
-          <p className="hint">請選擇目前所在院區。</p>
-        </div>
+      {!isLoggedIn ? (
+        <section className="home-layout" aria-labelledby="campus-title">
+          <div className="home-main">
+            <h1 id="campus-title">照護系統</h1>
+            <p className="hint">請先登入院區環境與使用者，再進入病人工作台。</p>
+            <div className="home-tags" aria-label="系統狀態">
+              <span>病人導向工作台</span>
+              <span>銳評與排班整合</span>
+            </div>
 
-        <div className="campus-field">
-          <label htmlFor="campus">院區</label>
-          <select id="campus" name="campus" value={campus} onChange={(event) => setCampus(event.target.value)}>
-            {campusOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </div>
+            <div className="home-side" aria-label="環境登入">
+              <div className="campus-field">
+                <label htmlFor="campus">院區</label>
+                <select id="campus" name="campus" value={campus} onChange={(event) => setCampus(event.target.value)}>
+                  {campusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-        <div className="workspace">
-          <label htmlFor="workspace">作業區</label>
-          <select
-            id="workspace"
-            name="workspace"
-            value={workspace}
-            onChange={(event) => setWorkspace(event.target.value)}
-          >
-            {workspaceOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
+              <div className="workspace">
+                <label htmlFor="workspace">作業區</label>
+                <select
+                  id="workspace"
+                  name="workspace"
+                  value={workspace}
+                  onChange={(event) => setWorkspace(event.target.value)}
+                >
+                  {workspaceOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-      {showNursingDashboard && (
-        <section className="patient-section" aria-label="急住醫令護理功能">
-          <div className="nurse-field">
-            <label htmlFor="nurse">使用者護理師</label>
-            <select id="nurse" value={selectedNurse} onChange={(event) => setSelectedNurse(event.target.value)}>
-              {nurseOptions.map((nurse) => (
-                <option key={nurse} value={nurse}>
-                  {nurse}
-                </option>
-              ))}
-            </select>
+              <div className="nurse-field">
+                <label htmlFor="nurse">使用者</label>
+                <input
+                  id="nurse"
+                  list="nurse-options"
+                  value={selectedNurse}
+                  onChange={(event) => setSelectedNurse(event.target.value)}
+                  placeholder="輸入或選擇護理師名稱"
+                />
+                <datalist id="nurse-options">
+                  {nurseOptions.map((nurse) => (
+                    <option key={nurse} value={nurse} />
+                  ))}
+                </datalist>
+              </div>
+
+              <button className="primary-login-button" type="button" onClick={enterWorkspace} disabled={!selectedNurse}>
+                進入病人工作台
+              </button>
+            </div>
           </div>
+        </section>
+      ) : (
+        <>
+          <section className="workspace-header" aria-label="工作區資訊">
+            <div className="workspace-title">
+              <h2>病人工作台</h2>
+              <p>目前病人清單與照護作業</p>
+            </div>
+            <HealthBadge status={healthStatus} />
+            <div className="workspace-meta">
+              <span>{campus}</span>
+              <span>{workspace}</span>
+              <span>使用者 {selectedNurse}</span>
+            </div>
+            <button className="secondary-button" type="button" onClick={signOut}>
+              切換登入資訊
+            </button>
+          </section>
 
-          <FunctionButtons
-            selectedPatient={selectedPatient}
-            selectedNurse={selectedNurse}
-            onAssessmentClick={openAssessment}
-            onSchedulingClick={openScheduling}
-          />
+          {!isNursingWorkspace && (
+            <p className="message">目前作業區尚未啟用病人工作台，請返回切換至急住醫令護理作業。</p>
+          )}
 
+          {showNursingDashboard && (
+        <section className="patient-section" aria-label="急住醫令護理功能">
           <PatientTable
             patients={patients}
             assessmentItems={assessmentItems}
@@ -286,7 +369,16 @@ function App() {
             status={status}
             errorMessage={errorMessage}
           />
+
+          <FunctionButtons
+            selectedPatient={selectedPatient}
+            selectedNurse={selectedNurse}
+            onAssessmentClick={openAssessment}
+            onSchedulingClick={openScheduling}
+          />
         </section>
+          )}
+        </>
       )}
     </main>
   );
@@ -317,6 +409,23 @@ function FunctionButtons({ selectedPatient, selectedNurse, onAssessmentClick, on
   );
 }
 
+function HealthBadge({ status }) {
+  const statusMap = {
+    idle: { label: "API 未檢查", level: "idle" },
+    checking: { label: "API 檢查中", level: "checking" },
+    ok: { label: "API 正常", level: "ok" },
+    error: { label: "API 異常", level: "error" }
+  };
+  const currentStatus = statusMap[status] ?? statusMap.idle;
+
+  return (
+    <div className={`health-badge ${currentStatus.level}`} aria-live="polite">
+      <span />
+      <b>{currentStatus.label}</b>
+    </div>
+  );
+}
+
 function PatientTable({
   patients,
   assessmentItems,
@@ -340,11 +449,23 @@ function PatientTable({
 
   return (
     <div className="table-wrap">
-      <table>
+      <table className="patient-main-table">
+        <colgroup>
+          <col style={{ width: "8%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "24%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "9%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th>床號</th>
-            <th>主治醫師一師</th>
+            <th>主治醫師</th>
             <th>病人姓名</th>
             <th>性別</th>
             <th>年齡</th>
@@ -582,8 +703,7 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
       setSaveStatus("saving");
       setMessage("");
       await onSave(patient.id, scores);
-      setSaveStatus("success");
-      setMessage("銳評已儲存，首頁麻煩度評分已更新。");
+      onBack();
     } catch (error) {
       setSaveStatus("error");
       setMessage(error.message);
@@ -689,7 +809,7 @@ function AssessmentPage({ patient, assessmentItems, onBack, onSave }) {
 
         <div className="assessment-list">
           {assessmentItems.map((item) => (
-            <div className="score-row" key={item.key}>
+            <div className={`score-row ${item.type === "multi" ? "score-row-multi" : ""}`} key={item.key}>
               <div>
                 {item.label}
                 <small>{getItemHint(item)}</small>
