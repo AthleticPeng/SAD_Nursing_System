@@ -658,17 +658,17 @@ td {
 }
 
 .quick-list strong {
-  max-height: 82px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   color: var(--ink);
   font-size: var(--font-body);
   line-height: var(--line-normal);
 }
 
 .compact-details {
-  max-height: 320px;
-  overflow: auto;
-  padding-right: 4px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .detail-item {
